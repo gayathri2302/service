@@ -1,0 +1,28 @@
+// Prisma schema — maps to the existing [dbo].[Users] table in the "Private" database.
+//
+// CONNECTION STRING format (set DATABASE_URL in .env):
+//   sqlserver://HOST:1433;database=Private;user=USER;password=PASS;encrypt=true;trustServerCertificate=false
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlserver"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                 Int       @id @default(autoincrement()) @map("Id")
+  name               String    @map("Name")               @db.NVarChar(100)
+  email              String    @unique @map("Email")       @db.NVarChar(255)
+  password           String    @map("Password")            @db.NVarChar(255)
+  isActive           Boolean   @default(true)  @map("IsActive")
+  mustChangePassword Boolean   @default(true)  @map("MustChangePassword")
+  resetToken         String?   @map("ResetToken")          @db.NVarChar(255)
+  resetTokenExpires  DateTime? @map("ResetTokenExpires")   @db.DateTime2
+  createdAt          DateTime  @default(now()) @map("CreatedAt") @db.DateTime2
+  updatedAt          DateTime  @updatedAt      @map("UpdatedAt") @db.DateTime2
+
+  @@map("Users")
+}
