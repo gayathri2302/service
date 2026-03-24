@@ -1,8 +1,9 @@
-import prisma from '../lib/prisma.js';
+import { getPrisma } from '../lib/prisma.js';
 
 export const AuthRepository = {
 
   findByEmail(email: string) {
+    const prisma = getPrisma();
     return prisma.user.findUnique({
       where: { email },
       select: {
@@ -17,6 +18,7 @@ export const AuthRepository = {
   },
 
   findByResetToken(token: string) {
+    const prisma = getPrisma();
     return prisma.user.findFirst({
       where: {
         resetToken:        token,
@@ -27,6 +29,7 @@ export const AuthRepository = {
   },
 
   updatePassword(id: number, passwordHash: string) {
+    const prisma = getPrisma();
     return prisma.user.update({
       where: { id },
       data: {
@@ -37,6 +40,7 @@ export const AuthRepository = {
   },
 
   saveResetToken(id: number, token: string, expires: Date) {
+    const prisma = getPrisma();
     return prisma.user.update({
       where: { id },
       data: { resetToken: token, resetTokenExpires: expires },
@@ -44,6 +48,7 @@ export const AuthRepository = {
   },
 
   clearResetTokenAndSetPassword(id: number, passwordHash: string) {
+    const prisma = getPrisma();
     return prisma.user.update({
       where: { id },
       data: {
