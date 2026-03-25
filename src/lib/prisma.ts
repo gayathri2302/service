@@ -1,8 +1,11 @@
-import { PrismaClient } from '@prisma/client';
+import pkg from '@prisma/client';
+import type { PrismaClient as PrismaClientType } from '@prisma/client';
 
-let prismaInstance: PrismaClient | null = null;
+const { PrismaClient } = pkg;
 
-export function getPrisma(): PrismaClient {
+let prismaInstance: PrismaClientType | null = null;
+
+export function getPrisma(): PrismaClientType {
   if (!prismaInstance) {
     prismaInstance = new PrismaClient({
       errorFormat: 'pretty',
