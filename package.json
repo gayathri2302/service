@@ -5,8 +5,9 @@
   "scripts": {
     "dev": "tsx watch src/api-server.ts",
     "dev:mcp": "tsx src/mcp-server.ts",
-    "build": "tsc",
+    "build": "tsc && prisma generate",
     "start": "node dist/api-server.js",
+    "postinstall": "prisma generate",
     "db:generate": "prisma generate",
     "db:seed": "tsx prisma/seed.ts"
   },
