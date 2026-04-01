@@ -36,7 +36,6 @@ jobs:
           path: |
             .
             !node_modules
-            !dist
 
   deploy:
     runs-on: ubuntu-latest
