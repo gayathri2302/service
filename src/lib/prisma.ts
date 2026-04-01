@@ -1,5 +1,5 @@
-import pkg from '@prisma/client';
-import type { PrismaClient as PrismaClientType } from '@prisma/client';
+import pkg from '../generated/prisma/index.js';
+import type { PrismaClient as PrismaClientType } from '../generated/prisma/index.js';
 
 const { PrismaClient } = pkg;
 
