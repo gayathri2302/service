@@ -21,10 +21,10 @@ jobs:
           node-version: '20.x'
 
       - name: Install dependencies
-        run: npm ci --omit=dev
+        run: npm ci
 
       - name: Build TypeScript
-        run: npx tsc
+        run: ./node_modules/.bin/tsc
 
       - name: Upload artifact for deployment
         uses: actions/upload-artifact@v4
