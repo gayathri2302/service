@@ -26,15 +26,14 @@ jobs:
       - name: Build TypeScript
         run: ./node_modules/.bin/tsc
 
+      - name: Zip artifact for deployment
+        run: zip -r node-app.zip dist/ node_modules/ package.json prisma/ web.config
+
       - name: Upload artifact for deployment
         uses: actions/upload-artifact@v4
         with:
           name: node-app
-          path: |
-            dist/
-            node_modules/
-            package.json
-            prisma/
+          path: node-app.zip
 
   deploy:
     runs-on: ubuntu-latest
@@ -62,4 +61,4 @@ jobs:
         with:
           app-name: 'gitlabs'
           slot-name: 'Production'
-          package: .
+          package: node-app.zip
