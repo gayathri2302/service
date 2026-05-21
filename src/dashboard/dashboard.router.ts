@@ -15,8 +15,8 @@ const router    = Router();
 const execAsync = promisify(exec);
 const repoPath  = process.env.LOCAL_REPO_PATH!;
 
-function client(projectId: string) {
-  return createGitlabClient(projectId);
+function client(projectId: string | string[]) {
+  return createGitlabClient(String(projectId));
 }
 
 // ── MR list & details ───────────────────────────────────────────────────────
@@ -167,7 +167,7 @@ router.post('/:projectId/mrs/:id/discussions/:discussionId/reply', async (req, r
 
 router.put('/:projectId/mrs/:id/discussions/:discussionId/resolve', requireMerger, async (req, res) => {
   try {
-    res.json(await client(req.params.projectId).resolveDiscussion(Number(req.params.id), req.params.discussionId, req.body.resolved));
+    res.json(await client(req.params.projectId).resolveDiscussion(Number(req.params.id), String(req.params.discussionId), req.body.resolved));
   } catch (e: any) { res.status(500).json({ error: e.response?.data?.message || e.message }); }
 });
 
