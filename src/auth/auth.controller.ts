@@ -39,6 +39,7 @@ export async function login(req: Request<{}, {}, LoginInput>, res: Response) {
       id:                 user.id,
       email:              user.email,
       name:               user.name,
+      role:               user.role?.name ?? 'developer',
       mustChangePassword: user.mustChangePassword,
     };
 

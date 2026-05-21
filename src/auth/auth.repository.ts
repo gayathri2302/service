@@ -12,6 +12,7 @@ export const AuthRepository = {
         password:           true,
         isActive:           true,
         mustChangePassword: true,
+        role:               { select: { name: true } },
       },
     });
   },

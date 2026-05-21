@@ -1,7 +1,15 @@
 import { Router } from 'express';
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import type { Request, Response, NextFunction } from 'express';
 import { createGitlabClient, CURRENT_USER_ID } from '../gitlab.js';
+
+function requireMerger(req: Request, res: Response, next: NextFunction) {
+  if (req.user?.role !== 'merger') {
+    return res.status(403).json({ error: 'Permission denied: only mergers can perform this action.' });
+  }
+  next();
+}
 
 const router    = Router();
 const execAsync = promisify(exec);
@@ -61,7 +69,7 @@ router.get('/:projectId/mrs/:id/approvals', async (req, res) => {
 
 // ── MR actions ──────────────────────────────────────────────────────────────
 
-router.post('/:projectId/mrs/:id/merge', async (req, res) => {
+router.post('/:projectId/mrs/:id/merge', requireMerger, async (req, res) => {
   try {
     const gl    = client(req.params.projectId);
     const mrIid = Number(req.params.id);
@@ -157,7 +165,7 @@ router.post('/:projectId/mrs/:id/discussions/:discussionId/reply', async (req, r
   } catch (e: any) { res.status(500).json({ error: e.response?.data?.message || e.message }); }
 });
 
-router.put('/:projectId/mrs/:id/discussions/:discussionId/resolve', async (req, res) => {
+router.put('/:projectId/mrs/:id/discussions/:discussionId/resolve', requireMerger, async (req, res) => {
   try {
     res.json(await client(req.params.projectId).resolveDiscussion(Number(req.params.id), req.params.discussionId, req.body.resolved));
   } catch (e: any) { res.status(500).json({ error: e.response?.data?.message || e.message }); }
@@ -181,7 +189,7 @@ router.get('/:projectId/pipelines/:id/jobs', async (req, res) => {
   } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
-router.post('/:projectId/pipelines/:id/cancel', async (req, res) => {
+router.post('/:projectId/pipelines/:id/cancel', requireMerger, async (req, res) => {
   try {
     res.json(await client(req.params.projectId).cancelPipeline(Number(req.params.id)));
   } catch (e: any) {
@@ -190,7 +198,7 @@ router.post('/:projectId/pipelines/:id/cancel', async (req, res) => {
   }
 });
 
-router.post('/:projectId/pipelines/:id/retry', async (req, res) => {
+router.post('/:projectId/pipelines/:id/retry', requireMerger, async (req, res) => {
   try {
     res.json(await client(req.params.projectId).retryPipeline(Number(req.params.id)));
   } catch (e: any) {
@@ -199,7 +207,7 @@ router.post('/:projectId/pipelines/:id/retry', async (req, res) => {
   }
 });
 
-router.post('/:projectId/pipelines', async (req, res) => {
+router.post('/:projectId/pipelines', requireMerger, async (req, res) => {
   try {
     res.json(await client(req.params.projectId).triggerPipeline(req.body.ref));
   } catch (e: any) {
