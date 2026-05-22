@@ -9,15 +9,30 @@ const GITLAB_URL = process.env.GITLAB_URL!;
 const GITLAB_TOKEN = process.env.GITLAB_TOKEN!;
 export const CURRENT_USER_ID = Number(process.env.GITLAB_CURRENT_USER_ID || '0');
 
-function makeApi(projectId: number | string) {
+const USER_TOKEN_RULES: Array<{ match: string; token: string | undefined }> = [
+  { match: 'thendral', token: process.env.GITLAB_TA_TOKEN },
+  { match: 'priyanka', token: process.env.GITLAB_PP_TOKEN },
+  { match: 'gayathri', token: process.env.GITLAB_TOKEN },
+];
+
+function resolveToken(username?: string): string {
+  if (username) {
+    const lower = username.toLowerCase();
+    const rule  = USER_TOKEN_RULES.find(r => lower.includes(r.match));
+    if (rule?.token) return rule.token;
+  }
+  return GITLAB_TOKEN;
+}
+
+function makeApi(projectId: number | string, username?: string) {
   return axios.create({
     baseURL: `${GITLAB_URL}/api/v4/projects/${projectId}`,
-    headers: { 'PRIVATE-TOKEN': GITLAB_TOKEN },
+    headers: { 'PRIVATE-TOKEN': resolveToken(username) },
   });
 }
 
-export function createGitlabClient(projectId: number | string) {
-  const api = makeApi(projectId);
+export function createGitlabClient(projectId: number | string, username?: string) {
+  const api = makeApi(projectId, username);
 
   return {
     listMRs: async (state = 'opened', page = 1, perPage = 20, search = '') => {
