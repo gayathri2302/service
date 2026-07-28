@@ -35,29 +35,111 @@ export function createGitlabClient(projectId: number | string, username?: string
   const api = makeApi(projectId, username);
 
   return {
-    listMRs: async (state = 'opened', page = 1, perPage = 20, search = '') => {
-      const params: any = { 
-        state, 
-        per_page: perPage, 
-        order_by: 'updated_at', 
-        sort: 'desc', 
-        page 
+    listMRs: async (
+      state = 'opened',
+      page = 1,
+      perPage = 20,
+      search = '',
+      filters: {
+        sourceBranch?: string;
+        targetBranch?: string;
+        authorUsername?: string;
+        mergedByUsername?: string;
+        orderBy?: string;
+        sort?: string;
+      } = {}
+    ) => {
+      const {
+        sourceBranch,
+        targetBranch,
+        authorUsername,
+        mergedByUsername,
+        orderBy = 'updated_at',
+        sort = 'desc',
+      } = filters;
+
+      const baseParams: any = {
+        state,
+        per_page: perPage,
+        order_by: orderBy,
+        sort,
+        page,
       };
-      
-      if (search) {
-        params.search = search;
-        params.in = 'title';
+
+      if (sourceBranch)    baseParams.source_branch   = sourceBranch;
+      if (targetBranch)    baseParams.target_branch   = targetBranch;
+      if (authorUsername)  baseParams.author_username = authorUsername;
+
+      // Client-side filter for merged_by (GitLab API doesn't expose this as a query param)
+      const applyClientFilters = (data: any[]) => {
+        if (!mergedByUsername) return data;
+        const lc = mergedByUsername.toLowerCase();
+        return data.filter(
+          (mr: any) =>
+            mr.merged_by?.username?.toLowerCase().includes(lc) ||
+            mr.merged_by?.name?.toLowerCase().includes(lc),
+        );
+      };
+
+      // Helper to sort a deduped list consistently with the chosen order
+      const sortDeduped = (list: any[]) => {
+        list.sort((a: any, b: any) => {
+          if (orderBy === 'id') return sort === 'asc' ? a.iid - b.iid : b.iid - a.iid;
+          const field = orderBy === 'created_at' ? 'created_at' : 'updated_at';
+          const diff = new Date(a[field]).getTime() - new Date(b[field]).getTime();
+          return sort === 'asc' ? diff : -diff;
+        });
+      };
+
+      if (!search) {
+        const res = await api.get('/merge_requests', { params: baseParams });
+        return {
+          data: applyClientFilters(res.data),
+          pagination: {
+            page, perPage,
+            totalPages: Number(res.headers['x-total-pages'] || 1),
+            totalCount: Number(res.headers['x-total'] || 0),
+          },
+        };
       }
-      
-      const res = await api.get('/merge_requests', { params });
+
+      // With authorUsername filter active, only do a title search (author already narrowed by param)
+      if (authorUsername) {
+        const res = await api.get('/merge_requests', { params: { ...baseParams, search, in: 'title' } });
+        return {
+          data: applyClientFilters(res.data),
+          pagination: {
+            page, perPage,
+            totalPages: Number(res.headers['x-total-pages'] || 1),
+            totalCount: Number(res.headers['x-total'] || 0),
+          },
+        };
+      }
+
+      // Dual search: title + author username — merge and deduplicate by iid
+      const [titleRes, authorRes] = await Promise.allSettled([
+        api.get('/merge_requests', { params: { ...baseParams, search, in: 'title' } }),
+        api.get('/merge_requests', { params: { ...baseParams, author_username: search } }),
+      ]);
+
+      const titleData   = titleRes.status  === 'fulfilled' ? titleRes.value.data    : [];
+      const authorData  = authorRes.status === 'fulfilled' ? authorRes.value.data   : [];
+      const titleHeaders = titleRes.status === 'fulfilled' ? titleRes.value.headers : {};
+
+      const seen = new Set<number>();
+      const deduped: any[] = [];
+      for (const mr of [...titleData, ...authorData]) {
+        if (!seen.has(mr.iid)) { seen.add(mr.iid); deduped.push(mr); }
+      }
+      sortDeduped(deduped);
+
       return {
-        data: res.data,
+        data: applyClientFilters(deduped),
         pagination: {
-          page,
-          perPage,
-          totalPages: Number(res.headers['x-total-pages'] || 1),
-          totalCount: Number(res.headers['x-total'] || 0)
-        }
+          page, perPage,
+          totalPages: Number(titleHeaders['x-total-pages'] || 1),
+          totalCount: deduped.length,
+        },
       };
     },
 

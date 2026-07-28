@@ -23,11 +23,19 @@ function client(projectId: string | string[], username?: string) {
 
 router.get('/:projectId/mrs', async (req, res) => {
   try {
-    const state = (req.query.state as string) || 'opened';
-    const page = parseInt(req.query.page as string) || 1;
-    const perPage = parseInt(req.query.per_page as string) || 20;
-    const search = (req.query.search as string) || '';
-    res.json(await client(req.params.projectId, req.user?.name).listMRs(state, page, perPage, search));
+    const state    = (req.query.state          as string) || 'opened';
+    const page     = parseInt(req.query.page   as string) || 1;
+    const perPage  = parseInt(req.query.per_page as string) || 20;
+    const search   = (req.query.search         as string) || '';
+    const filters  = {
+      sourceBranch:     (req.query.source_branch      as string) || '',
+      targetBranch:     (req.query.target_branch      as string) || '',
+      authorUsername:   (req.query.author_username    as string) || '',
+      mergedByUsername: (req.query.merged_by_username as string) || '',
+      orderBy:          (req.query.order_by           as string) || 'updated_at',
+      sort:             (req.query.sort               as string) || 'desc',
+    };
+    res.json(await client(req.params.projectId, req.user?.name).listMRs(state, page, perPage, search, filters));
   } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
