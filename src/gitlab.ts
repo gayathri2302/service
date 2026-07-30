@@ -28,6 +28,7 @@ function makeApi(projectId: number | string, username?: string) {
   return axios.create({
     baseURL: `${GITLAB_URL}/api/v4/projects/${projectId}`,
     headers: { 'PRIVATE-TOKEN': resolveToken(username) },
+    timeout: 20000,
   });
 }
 
@@ -70,6 +71,13 @@ export function createGitlabClient(projectId: number | string, username?: string
         order_by: orderBy,
         sort,
         page,
+      };
+
+      const exactParams: any = {
+        ...baseParams,
+        ...(sourceBranch?.trim() ? { source_branch: sourceBranch.trim() } : {}),
+        ...(targetBranch?.trim() ? { target_branch: targetBranch.trim() } : {}),
+        ...(authorUsername?.trim() ? { author_username: authorUsername.trim() } : {}),
       };
 
       const hasClientFiltering = Boolean(
@@ -150,49 +158,70 @@ export function createGitlabClient(projectId: number | string, username?: string
       const seen = new Set<number>();
       let apiPage = 1;
       let pagesFetched = 0;
-      const maxPages = 200;
+      const maxPages = 60;
+      const deadlineAt = Date.now() + 12000;
       const neededForPage = page * perPage;
       let hasMoreMatchesBeyondCurrentWindow = false;
+      let usedFallbackScan = false;
 
-      while (true) {
-        if (pagesFetched >= maxPages) {
-          hasMoreMatchesBeyondCurrentWindow = true;
-          break;
-        }
-        pagesFetched += 1;
+      const scanPages = async (paramsForScan: any) => {
+        while (true) {
+          if (pagesFetched >= maxPages || Date.now() >= deadlineAt) {
+            hasMoreMatchesBeyondCurrentWindow = true;
+            break;
+          }
+          pagesFetched += 1;
 
-        const res = await api.get('/merge_requests', {
-          params: { ...baseParams, page: apiPage, per_page: 100 },
-        });
-        const items = res.data as any[];
-        const previousSeenSize = seen.size;
+          const res = await api.get('/merge_requests', {
+            params: { ...paramsForScan, page: apiPage, per_page: 100 },
+          });
+          const items = res.data as any[];
+          const previousSeenSize = seen.size;
 
-        for (const mr of items) {
-          if (seen.has(mr.iid)) continue;
-          seen.add(mr.iid);
-          if (matchesMR(mr)) {
-            filteredAccumulated.push(mr);
-            if (filteredAccumulated.length > neededForPage) {
-              hasMoreMatchesBeyondCurrentWindow = true;
-              break;
+          for (const mr of items) {
+            if (seen.has(mr.iid)) continue;
+            seen.add(mr.iid);
+            if (matchesMR(mr)) {
+              filteredAccumulated.push(mr);
+              if (filteredAccumulated.length > neededForPage) {
+                hasMoreMatchesBeyondCurrentWindow = true;
+                break;
+              }
             }
           }
+
+          if (hasMoreMatchesBeyondCurrentWindow) break;
+
+          const addedNewItems = seen.size > previousSeenSize;
+          const nextPageHeader = headerToPositiveNumber((res.headers as Record<string, unknown>)['x-next-page']);
+          const hasNextByLength = items.length === 100;
+
+          if (nextPageHeader !== null) {
+            if (nextPageHeader <= apiPage || !addedNewItems) break;
+            apiPage = nextPageHeader;
+            continue;
+          }
+
+          if (!hasNextByLength || !addedNewItems) break;
+          apiPage += 1;
         }
+      };
 
-        if (hasMoreMatchesBeyondCurrentWindow) break;
+      await scanPages(exactParams);
 
-        const addedNewItems = seen.size > previousSeenSize;
-        const nextPageHeader = headerToPositiveNumber((res.headers as Record<string, unknown>)['x-next-page']);
-        const hasNextByLength = items.length === 100;
-
-        if (nextPageHeader !== null) {
-          if (nextPageHeader <= apiPage || !addedNewItems) break;
-          apiPage = nextPageHeader;
-          continue;
-        }
-
-        if (!hasNextByLength || !addedNewItems) break;
-        apiPage += 1;
+      // If exact narrowing (source/target/author) produced zero matches, retry broad scan for partial matching.
+      if (
+        filteredAccumulated.length === 0 &&
+        (sourceBranchTerm || targetBranchTerm || authorTerm) &&
+        !searchTerm
+      ) {
+        usedFallbackScan = true;
+        apiPage = 1;
+        pagesFetched = 0;
+        hasMoreMatchesBeyondCurrentWindow = false;
+        seen.clear();
+        filteredAccumulated.length = 0;
+        await scanPages(baseParams);
       }
 
       sortDeduped(filteredAccumulated);
@@ -213,6 +242,9 @@ export function createGitlabClient(projectId: number | string, username?: string
           perPage,
           totalPages,
           totalCount,
+        },
+        meta: {
+          usedFallbackScan,
         },
       };
     },
