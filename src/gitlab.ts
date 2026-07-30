@@ -146,13 +146,19 @@ export function createGitlabClient(projectId: number | string, username?: string
         };
       }
 
-      const all: any[] = [];
+      const filteredAccumulated: any[] = [];
       const seen = new Set<number>();
       let apiPage = 1;
       let pagesFetched = 0;
       const maxPages = 200;
+      const neededForPage = page * perPage;
+      let hasMoreMatchesBeyondCurrentWindow = false;
+
       while (true) {
-        if (pagesFetched >= maxPages) break;
+        if (pagesFetched >= maxPages) {
+          hasMoreMatchesBeyondCurrentWindow = true;
+          break;
+        }
         pagesFetched += 1;
 
         const res = await api.get('/merge_requests', {
@@ -162,18 +168,24 @@ export function createGitlabClient(projectId: number | string, username?: string
         const previousSeenSize = seen.size;
 
         for (const mr of items) {
-          if (!seen.has(mr.iid)) {
-            seen.add(mr.iid);
-            all.push(mr);
+          if (seen.has(mr.iid)) continue;
+          seen.add(mr.iid);
+          if (matchesMR(mr)) {
+            filteredAccumulated.push(mr);
+            if (filteredAccumulated.length > neededForPage) {
+              hasMoreMatchesBeyondCurrentWindow = true;
+              break;
+            }
           }
         }
-        const addedNewItems = seen.size > previousSeenSize;
 
+        if (hasMoreMatchesBeyondCurrentWindow) break;
+
+        const addedNewItems = seen.size > previousSeenSize;
         const nextPageHeader = headerToPositiveNumber((res.headers as Record<string, unknown>)['x-next-page']);
         const hasNextByLength = items.length === 100;
 
         if (nextPageHeader !== null) {
-          // Prefer server-indicated pagination when available.
           if (nextPageHeader <= apiPage || !addedNewItems) break;
           apiPage = nextPageHeader;
           continue;
@@ -183,13 +195,16 @@ export function createGitlabClient(projectId: number | string, username?: string
         apiPage += 1;
       }
 
-      const filtered = all.filter(matchesMR);
-      sortDeduped(filtered);
+      sortDeduped(filteredAccumulated);
 
       const start = (page - 1) * perPage;
-      const data = filtered.slice(start, start + perPage);
-      const totalCount = filtered.length;
-      const totalPages = totalCount === 0 ? 1 : Math.ceil(totalCount / perPage);
+      const data = filteredAccumulated.slice(start, start + perPage);
+      const totalCount = hasMoreMatchesBeyondCurrentWindow
+        ? start + data.length + 1
+        : start + data.length;
+      const totalPages = hasMoreMatchesBeyondCurrentWindow
+        ? page + 1
+        : (totalCount === 0 ? 1 : Math.ceil(totalCount / perPage));
 
       return {
         data,
