@@ -149,11 +149,17 @@ export function createGitlabClient(projectId: number | string, username?: string
       const all: any[] = [];
       const seen = new Set<number>();
       let apiPage = 1;
+      let pagesFetched = 0;
+      const maxPages = 200;
       while (true) {
+        if (pagesFetched >= maxPages) break;
+        pagesFetched += 1;
+
         const res = await api.get('/merge_requests', {
           params: { ...baseParams, page: apiPage, per_page: 100 },
         });
         const items = res.data as any[];
+        const previousSeenSize = seen.size;
 
         for (const mr of items) {
           if (!seen.has(mr.iid)) {
@@ -161,18 +167,19 @@ export function createGitlabClient(projectId: number | string, username?: string
             all.push(mr);
           }
         }
+        const addedNewItems = seen.size > previousSeenSize;
 
         const nextPageHeader = headerToPositiveNumber((res.headers as Record<string, unknown>)['x-next-page']);
         const hasNextByLength = items.length === 100;
 
         if (nextPageHeader !== null) {
           // Prefer server-indicated pagination when available.
-          if (nextPageHeader <= apiPage) break;
+          if (nextPageHeader <= apiPage || !addedNewItems) break;
           apiPage = nextPageHeader;
           continue;
         }
 
-        if (!hasNextByLength) break;
+        if (!hasNextByLength || !addedNewItems) break;
         apiPage += 1;
       }
 
