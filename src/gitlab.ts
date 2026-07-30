@@ -76,6 +76,36 @@ export function createGitlabClient(projectId: number | string, username?: string
         searchTerm || sourceBranchTerm || targetBranchTerm || authorTerm || mergedByTerm,
       );
 
+      const headerToPositiveNumber = (value: unknown): number | null => {
+        const n = Number(value);
+        return Number.isFinite(n) && n > 0 ? n : null;
+      };
+
+      const resolvePagination = (
+        currentPage: number,
+        currentPerPage: number,
+        itemCount: number,
+        headers: Record<string, unknown>,
+      ) => {
+        const totalPagesHeader = headerToPositiveNumber(headers['x-total-pages']);
+        const totalCountHeader = headerToPositiveNumber(headers['x-total']);
+        const nextPageHeader = headerToPositiveNumber(headers['x-next-page']);
+
+        const hasNext = nextPageHeader !== null
+          || ((totalPagesHeader === null || currentPage < totalPagesHeader) && itemCount === currentPerPage);
+
+        const totalPages = totalPagesHeader ?? (hasNext ? currentPage + 1 : currentPage);
+        const totalCount = totalCountHeader
+          ?? (hasNext ? currentPage * currentPerPage + 1 : ((currentPage - 1) * currentPerPage + itemCount));
+
+        return {
+          page: currentPage,
+          perPage: currentPerPage,
+          totalPages,
+          totalCount,
+        };
+      };
+
       const sortDeduped = (list: any[]) => {
         list.sort((a: any, b: any) => {
           if (orderBy === 'id') return sort === 'asc' ? a.iid - b.iid : b.iid - a.iid;
@@ -112,34 +142,39 @@ export function createGitlabClient(projectId: number | string, username?: string
         const res = await api.get('/merge_requests', { params: baseParams });
         return {
           data: res.data,
-          pagination: {
-            page, perPage,
-            totalPages: Number(res.headers['x-total-pages'] || 1),
-            totalCount: Number(res.headers['x-total'] || 0),
-          },
+          pagination: resolvePagination(page, perPage, (res.data as any[]).length, res.headers as Record<string, unknown>),
         };
       }
 
       const all: any[] = [];
       const seen = new Set<number>();
       let apiPage = 1;
-      let totalApiPages = 1;
-
-      do {
+      while (true) {
         const res = await api.get('/merge_requests', {
           params: { ...baseParams, page: apiPage, per_page: 100 },
         });
-        totalApiPages = Number(res.headers['x-total-pages'] || 1);
+        const items = res.data as any[];
 
-        for (const mr of res.data as any[]) {
+        for (const mr of items) {
           if (!seen.has(mr.iid)) {
             seen.add(mr.iid);
             all.push(mr);
           }
         }
 
+        const nextPageHeader = headerToPositiveNumber((res.headers as Record<string, unknown>)['x-next-page']);
+        const hasNextByLength = items.length === 100;
+
+        if (nextPageHeader !== null) {
+          // Prefer server-indicated pagination when available.
+          if (nextPageHeader <= apiPage) break;
+          apiPage = nextPageHeader;
+          continue;
+        }
+
+        if (!hasNextByLength) break;
         apiPage += 1;
-      } while (apiPage <= totalApiPages);
+      }
 
       const filtered = all.filter(matchesMR);
       sortDeduped(filtered);
